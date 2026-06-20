@@ -1,38 +1,35 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 import subprocess
+import base64
+import os
 
 app = Flask(__name__)
-CORS(app)
 
 @app.post("/run")
 def run_code():
-    code = request.json.get("code", "")
+    code = request.json["code"]
 
-    result = subprocess.run(
-        ["docker", "run", "--rm", "-i", "python-science"],
-        input=code,
-        text=True,
-        capture_output=True
+    # Ejecutar run.py con el código del usuario
+    process = subprocess.Popen(
+        ["python", "run.py"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
     )
 
-    raw = result.stdout
+    stdout, stderr = process.communicate(code)
 
-    # Parser robusto
-    output = ""
-    image = ""
-
-    if "<<OUTPUT>>" in raw:
-        output = raw.split("<<OUTPUT>>")[1].split("<<IMAGE>>")[0]
-        output = output.replace("\\n", "\n").strip()
-
-    if "<<IMAGE>>" in raw:
-        image = raw.split("<<IMAGE>>")[1].strip()
+    # Si run.py genera una imagen, la guardará como output.png
+    image_data = ""
+    if os.path.exists("output.png"):
+        with open("output.png", "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+        os.remove("output.png")
 
     return jsonify({
-        "output": output,
-        "image": image
+        "output": stdout + ("\n" + stderr if stderr else ""),
+        "image": image_data
     })
 
-if __name__ == "__main__":
-    app.run(debug=True)
+app.run(host="0.0.0.0", port=5000)
